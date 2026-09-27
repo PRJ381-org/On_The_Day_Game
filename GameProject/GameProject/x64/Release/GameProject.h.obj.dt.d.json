@@ -1,0 +1,12 @@
+{
+    "Version": "1.2",
+    "Data": {
+        "Source": "c:\\users\\liamd\\documents\\belgium campus\\third year\\prj381\\game for proj\\game for open day atmpt 2\\on_the_day_game\\gameproject\\gameproject.h",
+        "ProvidedModule": "",
+        "Includes": [
+            "c:\\users\\liamd\\documents\\belgium campus\\third year\\prj381\\game for proj\\game for open day atmpt 2\\on_the_day_game\\gameproject\\resource.h"
+        ],
+        "ImportedModules": [],
+        "ImportedHeaderUnits": []
+    }
+}

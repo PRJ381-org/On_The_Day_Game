@@ -7,6 +7,8 @@
 #include "PythonEnvironment.h"
 #include <string>
 #include <algorithm>
+#include <thread> // Required for std::this_thread::sleep_for
+#include <chrono> // Required for std::chrono::seconds
 
 #define MAX_LOADSTRING 100
 
@@ -16,12 +18,19 @@ WCHAR szTitle[MAX_LOADSTRING];                  // The title bar text
 WCHAR szWindowClass[MAX_LOADSTRING];            // the main window class name
 
 
+bool bSolved = false;
+
+
 //
 int MorseCodeBox[4] = { 0,0,0,0 }; //bottom x; bottom y; top x; top y
 int CesarBox[4] = { 0,0,0,0 }; //bottom x; bottom y; top x; top y
 int AlgorithmBox[4] = { 0,0,0,0 };//bottom x; bottom y; top x; top y
 int SolveBox[4] = { 0,0,0,0 };//bottom x; bottom y; top x; top y
 int backBox[4] = { 0,0,0,0 };//bottom x; bottom y; top x; top y
+
+int FinalAnswerBoxMorseCode[4] = { 0,0,0,0 };//bottom x; bottom y; top x; top y
+int FinalAnswerBoxCypher[4] = { 0,0,0,0 };//bottom x; bottom y; top x; top y
+int FinalAnswerBoxAlgorithm[4] = { 0,0,0,0 };//bottom x; bottom y; top x; top y
 
 
 // Global Variables for Backgrounds
@@ -37,6 +46,11 @@ BITMAP bmpInfo;                    // Stores structural dimensions of the active
 // State Tracking
 bool bIsOnMainMenu = true;         // True at startup; blocks accidental clicks later
 
+bool bIsOnMorseCode = false;        // True when the Morse Code image is active
+bool bIsOnCypherCode = false;       // True when the Cypher Code image is active
+bool bIsOnSolver = false;          // True when the Solver image is active
+
+bool bShowFinalInputBox = false;    // Tracks if the final input box overlay is open
 bool bShowInputBox = false;         // Tracks if the input box overlay is open
 bool bShowInfoBox = false;          // Tracks if the info box overlay is open
 std::wstring boxDisplayText = L"";  // What the info box is displaying right now
@@ -46,7 +60,20 @@ std::wstring UserInputDisplayText = L"";   // Stores what the user types (Only u
 std::wstring UserInputText = L"";   // Stores what the user types (Only used on Left image)
 std::wstring infoBoxDisplayText = L"";  // What the info box is displaying right now
 
+std::wstring MorseCodeInputText = L"";   // Stores what the user types (Only used on Left image)
+std::wstring CypherCodeInputText = L"";   // Stores what the user types (Only used on Left image)
+std::wstring AlgorithmInputText = L"";   // Stores what the user types (Only used on Left image)
 
+
+std::wstring MorseCodeSolutionText = L"";   // Stores the solution for Morse Code
+std::wstring CypherCodeSolutionText = L"";   // Stores the solution for Cypher Code
+std::wstring AlgorithmSolutionText = L"";   // Stores the solution for Algorithm
+
+std::wstring AlgorithmPromptText = L"Please enter the algorithm you used to fix *NEON*";   // Stores the prompt for Algorithm
+std::wstring CypherPromptText = L"Please enter the Solved Cypher Text";   // Stores the prompt for Cypher Code
+std::wstring MorsePromptText = L"Please enter the Solved Morse Code Text";   // Stores the prompt for Morse Code
+
+std::wstring SolvedText = L"AI Shut down succefull! You have solved the puzzle and escaped!";   // Stores the solved text
 
 // Forward declarations of functions included in this code module:
 ATOM                MyRegisterClass(HINSTANCE hInstance);
@@ -127,6 +154,7 @@ void assignButtons() {
     CesarBox[2] = int(windowWidth); // Top x
     CesarBox[3] = int(windowHeight / 5 * 3.2); // Top y
 
+
     //                       Algorithm  (stage 1 accurate)
     //==============================================================================
     AlgorithmBox[0] = int(windowWidth / 110 * 2); // Bottom x
@@ -148,8 +176,378 @@ void assignButtons() {
     backBox[1] = int(windowHeight * 0); // Bottom y
     backBox[2] = int(windowWidth); // Top x
     backBox[3] = int(windowHeight / 10); // Top y
+
+
+    //                       Final answer Box Morse Code (stage 1 accurate)
+    //==============================================================================
+    int boxW = windowWidth / 100 * 90;
+    int boxH = windowHeight / 100 * 10;
+    int boxX = (windowWidth - boxW) / 2;
+    int boxY = (windowHeight - boxH) - (boxH * 7);
+    FinalAnswerBoxMorseCode[0] = int(boxX); // Bottom x
+    FinalAnswerBoxMorseCode[1] = int(boxY); // Bottom y
+    FinalAnswerBoxMorseCode[2] = int(boxX + boxW); // Top x
+    FinalAnswerBoxMorseCode[3] = int(boxY + boxH); // Top y
+
+
+    //                       Final answer Box Cesar (stage 1 accurate)
+    //==============================================================================
+    boxW = windowWidth / 100 * 90;
+    boxH = windowHeight / 100 * 10;
+    boxX = (windowWidth - boxW) / 2;
+    boxY = (windowHeight - boxH) - (boxH * 5);
+    FinalAnswerBoxCypher[0] = int(boxX); // Bottom x
+    FinalAnswerBoxCypher[1] = int(boxY); // Bottom y
+    FinalAnswerBoxCypher[2] = int(boxX + boxW); // Top x
+    FinalAnswerBoxCypher[3] = int(boxY + boxH); // Top y
+
+
+    //                       Final answer Box Algorithm (stage 1 accurate)
+    //==============================================================================
+    boxW = windowWidth / 100 * 90;
+    boxH = windowHeight / 100 * 10;
+    boxX = (windowWidth - boxW) / 2;
+    boxY = (windowHeight - boxH) - (boxH * 3);
+    FinalAnswerBoxAlgorithm[0] = int(boxX); // Bottom x
+    FinalAnswerBoxAlgorithm[1] = int(boxY); // Bottom y
+    FinalAnswerBoxAlgorithm[2] = int(boxX + boxW); // Top x
+    FinalAnswerBoxAlgorithm[3] = int(boxY + boxH); // Top y
+
 }
 
+void DrawFinalInfoBoxAlgorithm(HDC hdc, int windowWidth, int windowHeight)
+{
+    if (bShowFinalInputBox)
+    {
+        // 1. Calculate an overlay window size center-anchored rectangle
+        int boxW = windowWidth / 100 * 90;
+        int boxH = windowHeight / 100 * 10;
+        int boxX = (windowWidth - boxW) / 2;
+        int boxY = (windowHeight - boxH) - (boxH*4);
+
+        RECT boxRect = { boxX, boxY, boxX + boxW, boxY + boxH };
+
+        // 2. Draw 90s style solid terminal black background fill
+        HBRUSH hBlackBrush = CreateSolidBrush(RGB(10, 16, 10));
+        FillRect(hdc, &boxRect, hBlackBrush);
+
+        // 3. Frame it with a bright Matrix green matrix outline border frame
+        HBRUSH hRedBrush = CreateSolidBrush(RGB(255, 50, 50));
+        FrameRect(hdc, &boxRect, hRedBrush);
+
+        // 4. Setup retro terminal green monospace text styling configurations
+        SetTextColor(hdc, RGB(50, 255, 50));
+        SetBkMode(hdc, TRANSPARENT);
+
+        // 5. Select a retro system font built into Windows
+        HFONT hFont = CreateFontW(12, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
+            ANSI_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+            DEFAULT_QUALITY, FIXED_PITCH | FF_MODERN, L"Courier New");
+        HFONT hOldFont = (HFONT)SelectObject(hdc, hFont);
+
+        // Add padding margins inside your black box so text doesn't hit the border outline
+        RECT textRect = { boxRect.left + 15, boxRect.top + 15, boxRect.right - 15, boxRect.bottom - 15 };
+
+        // 6. Draw string layout blocks
+        DrawTextW(hdc, AlgorithmPromptText.c_str(), -1, &textRect, DT_LEFT | DT_WORDBREAK | DT_EDITCONTROL);
+
+        // Cleanup font GDI drawing objects 
+        SelectObject(hdc, hOldFont);
+        DeleteObject(hFont);
+        DeleteObject(hBlackBrush);
+        DeleteObject(hRedBrush);
+    }
+}
+
+void DrawFinalInfoBoxMorseCode(HDC hdc, int windowWidth, int windowHeight)
+{
+    if (bShowFinalInputBox)
+    {
+        // 1. Calculate an overlay window size center-anchored rectangle
+        int boxW = windowWidth / 100 * 90;
+        int boxH = windowHeight / 100 * 10;
+        int boxX = (windowWidth - boxW) / 2;
+        int boxY = (windowHeight - boxH) - (boxH * 8);
+
+        RECT boxRect = { boxX, boxY, boxX + boxW, boxY + boxH };
+
+        // 2. Draw 90s style solid terminal black background fill
+        HBRUSH hBlackBrush = CreateSolidBrush(RGB(10, 16, 10));
+        FillRect(hdc, &boxRect, hBlackBrush);
+
+        // 3. Frame it with a bright Matrix green matrix outline border frame
+        HBRUSH hRedBrush = CreateSolidBrush(RGB(255, 50, 50));
+        FrameRect(hdc, &boxRect, hRedBrush);
+
+        // 4. Setup retro terminal green monospace text styling configurations
+        SetTextColor(hdc, RGB(50, 255, 50));
+        SetBkMode(hdc, TRANSPARENT);
+
+        // 5. Select a retro system font built into Windows
+        HFONT hFont = CreateFontW(12, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
+            ANSI_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+            DEFAULT_QUALITY, FIXED_PITCH | FF_MODERN, L"Courier New");
+        HFONT hOldFont = (HFONT)SelectObject(hdc, hFont);
+
+        // Add padding margins inside your black box so text doesn't hit the border outline
+        RECT textRect = { boxRect.left + 15, boxRect.top + 15, boxRect.right - 15, boxRect.bottom - 15 };
+
+        // 6. Draw string layout blocks
+        DrawTextW(hdc, MorsePromptText.c_str(), -1, &textRect, DT_LEFT | DT_WORDBREAK | DT_EDITCONTROL);
+
+        // Cleanup font GDI drawing objects 
+        SelectObject(hdc, hOldFont);
+        DeleteObject(hFont);
+        DeleteObject(hBlackBrush);
+        DeleteObject(hRedBrush);
+    }
+}
+void DrawFinalInfoBoxCypher(HDC hdc, int windowWidth, int windowHeight)
+{
+    if (bShowFinalInputBox)
+    {
+        // 1. Calculate an overlay window size center-anchored rectangle
+        int boxW = windowWidth / 100 * 90;
+        int boxH = windowHeight / 100 * 10;
+        int boxX = (windowWidth - boxW) / 2;
+        int boxY = (windowHeight - boxH) - (boxH * 6);
+
+        RECT boxRect = { boxX, boxY, boxX + boxW, boxY + boxH };
+
+        // 2. Draw 90s style solid terminal black background fill
+        HBRUSH hBlackBrush = CreateSolidBrush(RGB(10, 16, 10));
+        FillRect(hdc, &boxRect, hBlackBrush);
+
+        // 3. Frame it with a bright Matrix green matrix outline border frame
+        HBRUSH hRedBrush = CreateSolidBrush(RGB(255, 50, 50));
+        FrameRect(hdc, &boxRect, hRedBrush);
+
+        // 4. Setup retro terminal green monospace text styling configurations
+        SetTextColor(hdc, RGB(50, 255, 50));
+        SetBkMode(hdc, TRANSPARENT);
+
+        // 5. Select a retro system font built into Windows
+        HFONT hFont = CreateFontW(12, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
+            ANSI_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+            DEFAULT_QUALITY, FIXED_PITCH | FF_MODERN, L"Courier New");
+        HFONT hOldFont = (HFONT)SelectObject(hdc, hFont);
+
+        // Add padding margins inside your black box so text doesn't hit the border outline
+        RECT textRect = { boxRect.left + 15, boxRect.top + 15, boxRect.right - 15, boxRect.bottom - 15 };
+
+        // 6. Draw string layout blocks
+        DrawTextW(hdc, CypherPromptText.c_str(), -1, &textRect, DT_LEFT | DT_WORDBREAK | DT_EDITCONTROL);
+
+        // Cleanup font GDI drawing objects 
+        SelectObject(hdc, hOldFont);
+        DeleteObject(hFont);
+        DeleteObject(hBlackBrush);
+        DeleteObject(hRedBrush);
+    }
+}
+
+void DrawFinalInputBoxMorseCode(HDC hdc, int windowWidth, int windowHeight)
+{
+    if (bShowFinalInputBox)
+    {
+        // 1. Calculate an overlay window size center-anchored rectangle
+        int boxW = windowWidth / 100 * 90;
+        int boxH = windowHeight / 100 * 10;
+        int boxX = (windowWidth - boxW) / 2;
+        int boxY = (windowHeight - boxH) - (boxH * 7);
+
+        RECT boxRect = { boxX, boxY, boxX + boxW, boxY + boxH };
+
+        // 2. Draw 90s style solid terminal black background fill
+        HBRUSH hBlackBrush = CreateSolidBrush(RGB(10, 16, 10));
+        FillRect(hdc, &boxRect, hBlackBrush);
+
+        // 3. Frame it with a bright Matrix green matrix outline border frame
+        HBRUSH hRedBrush = CreateSolidBrush(RGB(255, 50, 50));
+		HBRUSH hGreenBrush = CreateSolidBrush(RGB(50, 255, 50));
+        
+		if (bIsOnMorseCode) {
+			FrameRect(hdc, &boxRect, hGreenBrush);
+		}
+		else {
+			FrameRect(hdc, &boxRect, hRedBrush);
+		}
+
+        // 4. Setup retro terminal green monospace text styling configurations
+        SetTextColor(hdc, RGB(50, 255, 50));
+        SetBkMode(hdc, TRANSPARENT);
+
+        // 5. Select a retro system font built into Windows
+        HFONT hFont = CreateFontW(12, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
+            ANSI_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+            DEFAULT_QUALITY, FIXED_PITCH | FF_MODERN, L"Courier New");
+        HFONT hOldFont = (HFONT)SelectObject(hdc, hFont);
+
+        // Add padding margins inside your black box so text doesn't hit the border outline
+        RECT textRect = { boxRect.left + 15, boxRect.top + 15, boxRect.right - 15, boxRect.bottom - 15 };
+
+        // 6. Draw string layout blocks
+        DrawTextW(hdc, MorseCodeSolutionText.c_str(), -1, &textRect, DT_LEFT | DT_WORDBREAK | DT_EDITCONTROL);
+
+        // Cleanup font GDI drawing objects 
+        SelectObject(hdc, hOldFont);
+        DeleteObject(hFont);
+        DeleteObject(hBlackBrush);
+        DeleteObject(hRedBrush);
+        DeleteObject(hGreenBrush);
+    }
+}
+
+void DrawSolvedMessageBox(HDC hdc, int windowWidth, int windowHeight)
+{
+    if (bSolved)
+    {
+        // 1. Calculate an overlay window size center-anchored rectangle
+        int boxW = windowWidth / 100 * 60;
+        int boxH = windowHeight / 100 * 60;
+        int boxX = (windowWidth - boxW) / 2;
+        int boxY = (windowHeight - boxH) / 2;
+
+        RECT boxRect = { boxX, boxY, boxX + boxW, boxY + boxH };
+
+        // 2. Draw 90s style solid terminal black background fill
+        HBRUSH hBlackBrush = CreateSolidBrush(RGB(10, 16, 10));
+        FillRect(hdc, &boxRect, hBlackBrush);
+
+        // 3. Frame it with a bright Matrix green matrix outline border frame
+        HBRUSH hGreenBrush = CreateSolidBrush(RGB(50, 255, 50));
+
+        FrameRect(hdc, &boxRect, hGreenBrush);
+
+
+
+        // 4. Setup retro terminal green monospace text styling configurations
+        SetTextColor(hdc, RGB(50, 255, 50));
+        SetBkMode(hdc, TRANSPARENT);
+
+        // 5. Select a retro system font built into Windows
+        HFONT hFont = CreateFontW(16, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
+            ANSI_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+            DEFAULT_QUALITY, FIXED_PITCH | FF_MODERN, L"Courier New");
+        HFONT hOldFont = (HFONT)SelectObject(hdc, hFont);
+
+        // Add padding margins inside your black box so text doesn't hit the border outline
+        RECT textRect = { boxRect.left + 15, boxRect.top + 15, boxRect.right - 15, boxRect.bottom - 15 };
+
+        // 6. Draw string layout blocks
+        DrawTextW(hdc, SolvedText.c_str(), -1, &textRect, DT_LEFT | DT_WORDBREAK | DT_EDITCONTROL);
+
+        // Cleanup font GDI drawing objects 
+        SelectObject(hdc, hOldFont);
+        DeleteObject(hFont);
+        DeleteObject(hBlackBrush);
+        DeleteObject(hGreenBrush);
+    }
+}
+
+void DrawFinalInputBoxAlgorithm(HDC hdc, int windowWidth, int windowHeight)
+{
+    if (bShowFinalInputBox)
+    {
+        // 1. Calculate an overlay window size center-anchored rectangle
+        int boxW = windowWidth / 100 * 90;
+        int boxH = windowHeight / 100 * 10;
+        int boxX = (windowWidth - boxW)/2;
+        int boxY = (windowHeight - boxH)-boxH*3;
+
+        RECT boxRect = { boxX, boxY, boxX + boxW, boxY + boxH };
+
+        // 2. Draw 90s style solid terminal black background fill
+        HBRUSH hBlackBrush = CreateSolidBrush(RGB(10, 16, 10));
+        FillRect(hdc, &boxRect, hBlackBrush);
+
+        // 3. Frame it with a bright Matrix green matrix outline border frame
+        HBRUSH hRedBrush = CreateSolidBrush(RGB(255, 50, 50));
+		HBRUSH hGreenBrush = CreateSolidBrush(RGB(50, 255, 50));
+
+        if (bIsOnSolver) {
+            FrameRect(hdc, &boxRect, hGreenBrush);
+        }
+        else {
+            FrameRect(hdc, &boxRect, hRedBrush);
+        }
+
+        // 4. Setup retro terminal green monospace text styling configurations
+        SetTextColor(hdc, RGB(50, 255, 50));
+        SetBkMode(hdc, TRANSPARENT);
+
+        // 5. Select a retro system font built into Windows
+        HFONT hFont = CreateFontW(12, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
+            ANSI_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+            DEFAULT_QUALITY, FIXED_PITCH | FF_MODERN, L"Courier New");
+        HFONT hOldFont = (HFONT)SelectObject(hdc, hFont);
+
+        // Add padding margins inside your black box so text doesn't hit the border outline
+        RECT textRect = { boxRect.left + 15, boxRect.top + 15, boxRect.right - 15, boxRect.bottom - 15 };
+
+        // 6. Draw string layout blocks
+        DrawTextW(hdc, AlgorithmSolutionText.c_str(), -1, &textRect, DT_LEFT | DT_WORDBREAK | DT_EDITCONTROL);
+
+        // Cleanup font GDI drawing objects 
+        SelectObject(hdc, hOldFont);
+        DeleteObject(hFont);
+        DeleteObject(hBlackBrush);
+        DeleteObject(hRedBrush);
+        DeleteObject(hGreenBrush);
+    }
+}
+
+void DrawFinalInputBoxCypher(HDC hdc, int windowWidth, int windowHeight)
+{
+    if (bShowFinalInputBox)
+    {
+        // 1. Calculate an overlay window size center-anchored rectangle
+        int boxW = windowWidth / 100 * 90;
+        int boxH = windowHeight / 100 * 10;
+        int boxX = (windowWidth - boxW) / 2;
+        int boxY = (windowHeight - boxH) - (boxH*5);
+
+        RECT boxRect = { boxX, boxY, boxX + boxW, boxY + boxH };
+
+        // 2. Draw 90s style solid terminal black background fill
+        HBRUSH hBlackBrush = CreateSolidBrush(RGB(10, 16, 10));
+        FillRect(hdc, &boxRect, hBlackBrush);
+
+        // 3. Frame it with a bright Matrix green matrix outline border frame
+        HBRUSH hRedBrush = CreateSolidBrush(RGB(255, 50, 50));
+        HBRUSH hGreenBrush = CreateSolidBrush(RGB(50, 255, 50));
+
+        if (bIsOnCypherCode) {
+            FrameRect(hdc, &boxRect, hGreenBrush);
+        }
+        else {
+            FrameRect(hdc, &boxRect, hRedBrush);
+        }
+
+        // 4. Setup retro terminal green monospace text styling configurations
+        SetTextColor(hdc, RGB(50, 255, 50));
+        SetBkMode(hdc, TRANSPARENT);
+
+        // 5. Select a retro system font built into Windows
+        HFONT hFont = CreateFontW(12, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
+            ANSI_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+            DEFAULT_QUALITY, FIXED_PITCH | FF_MODERN, L"Courier New");
+        HFONT hOldFont = (HFONT)SelectObject(hdc, hFont);
+
+        // Add padding margins inside your black box so text doesn't hit the border outline
+        RECT textRect = { boxRect.left + 15, boxRect.top + 15, boxRect.right - 15, boxRect.bottom - 15 };
+
+        // 6. Draw string layout blocks
+        DrawTextW(hdc, CypherCodeSolutionText.c_str(), -1, &textRect, DT_LEFT | DT_WORDBREAK | DT_EDITCONTROL);
+
+        // Cleanup font GDI drawing objects 
+        SelectObject(hdc, hOldFont);
+        DeleteObject(hFont);
+        DeleteObject(hBlackBrush);
+        DeleteObject(hRedBrush);
+        DeleteObject(hGreenBrush); 
+    }
+}
 // dynamic creation of input box for user to type in
 void DrawInputBox(HDC hdc, int windowWidth, int windowHeight)
 {
@@ -342,17 +740,21 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         int windowWidth = rect.right - rect.left;
         int windowHeight = rect.bottom - rect.top;
 
-        mouseY = windowHeight - mouseY; // Invert Y coordinate to match top-left origin
 
         if (bIsOnMainMenu)
         {
+
+            mouseY = windowHeight - mouseY; // Invert Y coordinate to match top-left origin
+
             // ---- MAIN MENU NAVIGATION ---- 
             if(mouseX >= MorseCodeBox[0] && mouseY >= MorseCodeBox[1] && mouseX <= MorseCodeBox[2] && mouseY <= MorseCodeBox[3])
             {
                 // Handle Morse Code Box click
 				hActiveBmp = hBmpMorse;
-                UserInputDisplayText = L"#Add your code here:\n#Use the examples on the left to help you\n\n";
-				infoBoxDisplayText = StringToWString( MyClass.GetUserInfoMorseCode());
+                infoBoxDisplayText = StringToWString( MyClass.GetUserInfoMorseCode());
+				userInputText = MorseCodeInputText; // Load the saved input text for the Morse code challenge
+                UserInputDisplayText = L"#Add your code here:\n#Use the examples on the left to help you\n\n"+userInputText;
+
 
                 bIsOnMainMenu = false;
                 bShowInfoBox = true;
@@ -363,8 +765,10 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
                 // Handle Cesar Code Box click
 
                 hActiveBmp = hBmpCypher;
-                UserInputDisplayText = L"#Add your code here:\n#Use the examples on the left to help you\n\n";
-				infoBoxDisplayText = StringToWString(MyClass.GetUserInfoCypherCode());
+                infoBoxDisplayText = StringToWString(MyClass.GetUserInfoCypherCode());
+				userInputText = CypherCodeInputText; // Load the saved input text for the cipher challenge
+
+                UserInputDisplayText = L"#Add your code here:\n#Use the examples on the left to help you\n\n"+userInputText;
 
                 bIsOnMainMenu = false;
                 bShowInfoBox = true;
@@ -375,9 +779,10 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
                 // Handle Algorithm Box click
 
                 hActiveBmp = hBmpAlgorithm;
-                UserInputDisplayText = L"Use the space below to help you figure out your solution to the challenge:\n\n";
+                infoBoxDisplayText = StringToWString(MyClass.GetUserInfoProblemSolve());
+				userInputText = AlgorithmInputText; // Load the saved input text for the algorithm challenge
 
-
+                UserInputDisplayText = L"Use the space below to help you figure out your solution to the challenge:\n\n"+userInputText;
                 bIsOnMainMenu = false;
                 bShowInfoBox = true;
                 bShowInputBox = true;
@@ -385,21 +790,70 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
             else if (mouseX >= SolveBox[0] && mouseY >= SolveBox[1] && mouseX <= SolveBox[2] && mouseY <= SolveBox[3])
             {
                 // Handle Solve Box click
-                   
+				hActiveBmp = hBmpSolver;
+
+
+				bShowFinalInputBox = true;
+				bIsOnMainMenu = false;
             }
 
+
         }
-        else
+        else if(bShowFinalInputBox)
         {
+            // ---- FINAL INPUT BOX LOGIC ----
+            if (mouseX >= FinalAnswerBoxMorseCode[0] && mouseY >= FinalAnswerBoxMorseCode[1] && mouseX <= FinalAnswerBoxMorseCode[2] && mouseY <= FinalAnswerBoxMorseCode[3])
+            {
+                // Handle Morse Code final input box click
+                bIsOnSolver = false;
+                bIsOnMorseCode = true;
+                bIsOnCypherCode = false;
+			}
+			else if (mouseX >= FinalAnswerBoxCypher[0] && mouseY >= FinalAnswerBoxCypher[1] && mouseX <= FinalAnswerBoxCypher[2] && mouseY <= FinalAnswerBoxCypher[3])
+			{
+				// Handle Cypher Code final input box click
+                bIsOnSolver = false;
+                bIsOnMorseCode = false;
+                bIsOnCypherCode = true;
+			}
+            else if (mouseX >= FinalAnswerBoxAlgorithm[0] && mouseY >= FinalAnswerBoxAlgorithm[1] && mouseX <= FinalAnswerBoxAlgorithm[2] && mouseY <= FinalAnswerBoxAlgorithm[3])
+            {
+                // Handle Algorithm final input box click
+				bIsOnSolver = true;
+				bIsOnMorseCode = false;
+				bIsOnCypherCode = false;
+            }
+        }
+        if (bIsOnMainMenu == false && bSolved == false)
+        {
+
+            mouseY = windowHeight - mouseY; // Invert Y coordinate to match top-left origin
             // ---- SUB-IMAGE LOGIC ----
 
             if (mouseX >= backBox[0] && mouseY >= backBox[1] && mouseX <= backBox[2] && mouseY <= backBox[3])
             {
                 // Handle back box click
+
+                if (hActiveBmp == hBmpMorse) {
+					MorseCodeInputText = userInputText; // Save the current input text for the Morse code challenge
+                }
+                else if (hActiveBmp == hBmpCypher) {
+                    CypherCodeInputText = userInputText; // Save the current input text for the cipher challenge
+                }
+                else if (hActiveBmp == hBmpAlgorithm) {
+					AlgorithmInputText = userInputText; // Save the current input text for the algorithm challenge
+                }
+
+
+
                 hActiveBmp = hBmpMainMenu;
                 bIsOnMainMenu = true;
                 bShowInputBox = false;
                 bShowInfoBox = false;
+				bShowFinalInputBox = false;
+                bIsOnSolver = false;
+                bIsOnMorseCode = false;
+                bIsOnCypherCode = false;
                 
             }
         }
@@ -421,7 +875,19 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
                 if (!userInputText.empty()) {
                     userInputText.pop_back();
                 }
-                UserInputDisplayText = L"#Add your code here : \n#Use the examples on the left to help you\n\n" + userInputText;
+				if (hActiveBmp == hBmpMorse) {
+					UserInputDisplayText = L"#Add your code here : \n#Use the examples on the left to help you\n\n" + userInputText;
+				}
+				else if (hActiveBmp == hBmpCypher) {
+					UserInputDisplayText = L"#Add your code here : \n#Use the examples on the left to help you\n\n" + userInputText;
+				}
+				else if (hActiveBmp == hBmpAlgorithm) {
+					UserInputDisplayText = L"Use the space below to help you figure out your solution to the challenge:\n\n" + userInputText;
+				}
+                else {
+                   // UserInputDisplayText = L"#Add your code here : \n#Use the examples on the left to help you\n\n" + userInputText;
+                }
+                
             }
             else if (ch == L'\r' || ch == L'\n') // USER PRESSES ENTER KEY
             {
@@ -437,15 +903,118 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
                 else if (hActiveBmp == hBmpCypher) {
                     infoBoxDisplayText = StringToWString(MyClass.GetUserInfoCypherCode()) + L"\n Output:" + StringToWString(out);
                 }
+                else if (hActiveBmp == hBmpAlgorithm) {
+                    if (MyClass.CheckProblemSolve(standardInput)) {
+                        infoBoxDisplayText = StringToWString(MyClass.GetUserInfoProblemSolve()) + L"\n\nCorrect solution! The AI *NEON* has been freed from its infinite loop.";
+                    } else {
+                        infoBoxDisplayText = StringToWString(MyClass.GetUserInfoProblemSolve()) + L"\n\nIncorrect solution. Please try again.";
+                    }
+                }
 
             }
             else if (ch >= 32) // Standard character append rule
             {
                 userInputText += ch;
-                UserInputDisplayText = L"#Add your code here : \n#Use the examples on the left to help you\n\n" + userInputText;
+                
+                if (hActiveBmp == hBmpMorse) {
+                    UserInputDisplayText = L"#Add your code here : \n#Use the examples on the left to help you\n\n" + userInputText;
+                }
+                else if (hActiveBmp == hBmpCypher) {
+                    UserInputDisplayText = L"#Add your code here : \n#Use the examples on the left to help you\n\n" + userInputText;
+                }
+                else if (hActiveBmp == hBmpAlgorithm) {
+                    UserInputDisplayText = L"Use the space below to help you figure out your solution to the challenge:\n\n" + userInputText;
+                }
             }
 
             // Instantly notify windows loop to paint text adjustments
+            InvalidateRect(hWnd, nullptr, TRUE);
+        }
+        else if (bShowFinalInputBox)
+        {
+            wchar_t ch = (wchar_t)wParam;
+
+            if(bIsOnCypherCode)
+			{
+				if (ch == L'\b') // Backspace
+				{
+					if (!CypherCodeSolutionText.empty()) {
+                        CypherCodeSolutionText.pop_back();
+					}
+				}
+				else if (ch >= 32) // Standard character append rule
+				{
+					CypherCodeSolutionText += ch;
+				}
+			}
+			else if (bIsOnMorseCode)
+			{
+				if (ch == L'\b') // Backspace
+				{
+					if (!MorseCodeSolutionText.empty()) {
+						MorseCodeSolutionText.pop_back();
+					}
+				}
+				else if (ch >= 32) // Standard character append rule
+				{
+					MorseCodeSolutionText += ch;
+				}
+			}
+			else if (bIsOnSolver)
+			{
+				if (ch == L'\b') // Backspace
+				{
+					if (!AlgorithmSolutionText.empty()) {
+						AlgorithmSolutionText.pop_back();
+					}
+				}
+				else if (ch >= 32) // Standard character append rule
+				{
+					AlgorithmSolutionText += ch;
+				}
+			}
+
+			if (ch == L'\r' || ch == L'\n') // USER PRESSES ENTER KEY
+			{
+				//
+				if (MyClass.CheckProblemSolve(WStringToString(AlgorithmSolutionText)) && MyClass.CheckCypherCode(WStringToString(CypherCodeSolutionText))&& MyClass.CheckMorseCode(WStringToString(MorseCodeSolutionText))) 
+                {
+                    bSolved = true;
+					bShowFinalInputBox = false;
+                }
+                else
+                {
+                    
+                    if (!bSolved) {
+                        SolvedText = L"Incorrect solution. Please try again.\n\nPress ENTER to continue.";
+                        
+						if (MyClass.CheckProblemSolve(WStringToString(AlgorithmSolutionText))) {
+							SolvedText += L"\n\nAlgorithm solution is correct.";
+						}
+						if (MyClass.CheckCypherCode(WStringToString(CypherCodeSolutionText))) {
+							SolvedText += L"\n\nCypher Code solution is correct.";
+						}
+						if (MyClass.CheckMorseCode(WStringToString(MorseCodeSolutionText))) {
+							SolvedText += L"\n\nMorse Code solution is correct.";
+						}/* else
+                        {
+							SolvedText += L"\n\nMorse Code solution is" + StringToWString(MyClass.FinalMorseCode);
+                        }*/
+
+
+                        bShowFinalInputBox = true;
+                        bSolved = true;
+                    }
+                    else
+                    {
+                        bSolved = false;
+                        bShowFinalInputBox = true;
+                        SolvedText = L"AI Shut down succefull! You have solved the puzzle and escaped!";
+                    }
+                }
+				
+			}
+
             InvalidateRect(hWnd, nullptr, TRUE);
         }
     }
@@ -492,7 +1061,18 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 
             DrawInfoBox(hdc, windowWidth, windowHeight);
             DrawInputBox(hdc, windowWidth, windowHeight);
-    
+
+			DrawFinalInputBoxAlgorithm(hdc, windowWidth, windowHeight);
+			DrawFinalInputBoxCypher(hdc, windowWidth, windowHeight);
+			DrawFinalInputBoxMorseCode(hdc, windowWidth, windowHeight);
+
+			DrawFinalInfoBoxAlgorithm(hdc, windowWidth, windowHeight);
+			DrawFinalInfoBoxCypher(hdc, windowWidth, windowHeight);
+			DrawFinalInfoBoxMorseCode(hdc, windowWidth, windowHeight);
+
+
+			DrawSolvedMessageBox(hdc, windowWidth, windowHeight);
+
             SelectObject(hMemDC, hOldBmp);
             DeleteDC(hMemDC);
         }

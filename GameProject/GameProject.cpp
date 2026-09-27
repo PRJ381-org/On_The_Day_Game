@@ -74,7 +74,7 @@ std::wstring CypherPromptText = L"Please enter the Solved Cypher Text";   // Sto
 std::wstring MorsePromptText = L"Please enter the Solved Morse Code Text";   // Stores the prompt for Morse Code
 
 std::wstring SolvedText = L"AI Shut down succefull! You have solved the puzzle and escaped!";   // Stores the solved text
-
+std::wstring ReturnText = L"Return to Main Menu";   // Stores the return text
 // Forward declarations of functions included in this code module:
 ATOM                MyRegisterClass(HINSTANCE hInstance);
 BOOL                InitInstance(HINSTANCE, int);
@@ -250,6 +250,50 @@ void DrawFinalInfoBoxAlgorithm(HDC hdc, int windowWidth, int windowHeight)
 
         // 6. Draw string layout blocks
         DrawTextW(hdc, AlgorithmPromptText.c_str(), -1, &textRect, DT_LEFT | DT_WORDBREAK | DT_EDITCONTROL);
+
+        // Cleanup font GDI drawing objects 
+        SelectObject(hdc, hOldFont);
+        DeleteObject(hFont);
+        DeleteObject(hBlackBrush);
+        DeleteObject(hRedBrush);
+    }
+}
+
+void DrawReturnButton(HDC hdc, int windowWidth, int windowHeight)
+{
+    if (!bIsOnMainMenu && !bSolved)
+    {
+        // 1. Calculate an overlay window size center-anchored rectangle
+        int boxW = windowWidth / 100 * 25;
+        int boxH = windowHeight / 100 * 10;
+        int boxX = (windowWidth - boxW);
+        int boxY = (windowHeight - boxH);
+
+        RECT boxRect = { boxX, boxY, boxX + boxW, boxY + boxH };
+
+        // 2. Draw 90s style solid terminal black background fill
+        HBRUSH hBlackBrush = CreateSolidBrush(RGB(10, 16, 10));
+        FillRect(hdc, &boxRect, hBlackBrush);
+
+        // 3. Frame it with a bright Matrix green matrix outline border frame
+        HBRUSH hRedBrush = CreateSolidBrush(RGB(255, 50, 50));
+        FrameRect(hdc, &boxRect, hRedBrush);
+
+        // 4. Setup retro terminal green monospace text styling configurations
+        SetTextColor(hdc, RGB(50, 255, 50));
+        SetBkMode(hdc, TRANSPARENT);
+
+        // 5. Select a retro system font built into Windows
+        HFONT hFont = CreateFontW(12, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
+            ANSI_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+            DEFAULT_QUALITY, FIXED_PITCH | FF_MODERN, L"Courier New");
+        HFONT hOldFont = (HFONT)SelectObject(hdc, hFont);
+
+        // Add padding margins inside your black box so text doesn't hit the border outline
+        RECT textRect = { boxRect.left + 15, boxRect.top + 15, boxRect.right - 15, boxRect.bottom - 15 };
+
+        // 6. Draw string layout blocks
+        DrawTextW(hdc, ReturnText.c_str(), -1, &textRect, DT_LEFT | DT_WORDBREAK | DT_EDITCONTROL);
 
         // Cleanup font GDI drawing objects 
         SelectObject(hdc, hOldFont);
@@ -1070,7 +1114,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			DrawFinalInfoBoxCypher(hdc, windowWidth, windowHeight);
 			DrawFinalInfoBoxMorseCode(hdc, windowWidth, windowHeight);
 
-
+			DrawReturnButton(hdc, windowWidth, windowHeight);
 			DrawSolvedMessageBox(hdc, windowWidth, windowHeight);
 
             SelectObject(hMemDC, hOldBmp);
